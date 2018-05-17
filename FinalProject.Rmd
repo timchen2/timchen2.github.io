@@ -1,0 +1,273 @@
+---
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(rvest)
+library(tidyverse)
+library(broom)
+library(GGally)
+```
+# Analyzing College Basketball teams from 2015 - 2018
+
+In this report I will be looking at all of the NCAA Division 1 college basketball teams from the '15-'16, '16-'17, and '17-'18 seasons. I will analyze these teams with primarily 4 statistics: eFG% (Effective Field Goal %), TOV% (Turnover %), TRB% (Total Rebound %), and FTr (Free Throw rate). These 4 advanced statistics are chosen based off of Dean Oliver's book; http://www.basketballonpaper.com/ where he stresses the importance of shooting (eFG%), turnovers (TOV%), rebounding (TRB%), and free throws (FTr). With these statistics, I am hoping I will be able to generate models that accurately predict the success of a team. I will be using W-L% (Win-Loss %) to assess 'success'. You can read more about these statistics at https://www.basketball-reference.com/about/glossary.html.   
+
+The data that I will be using are provided at this link: https://www.sports-reference.com/cbb/seasons/. The packages that you will need to install are: 'rvest', 'tidyverse', 'broom', and 'GGally'. Use install.packages() to install, and library() to load the package into R. 
+
+## Data Curation, Parsing, and Management
+
+The first step of the process requires me to obtain and clean the data. In order to scrape the data, I will be using an R package called rvest. This package allows you to scrape data from html pages - https://github.com/hadley/rvest. 
+
+To begin, I will need to inspect the html page in order to learn exactly where I should be scraping from. 
+![Inspecting the HTML page](/Users/Tim/Documents/Spring 2018/CMSC320/finalprojHTML.PNG)
+
+After inspecting the html page, I see the dataset that I am looking for is in the form of a table listed with id = "adv_school_stats". Using CSS selectors (https://www.w3schools.com/cssref/css_selectors.asp) with rvest, I select the html_node with id = "adv_school_stats" - html_node("#adv_school_stats"). Because it is a table, using rvest, I read the html_table in with html_table().  
+
+```{r}
+url2018 <- "https://www.sports-reference.com/cbb/seasons/2018-advanced-school-stats.html"
+data_html_2018 <- url2018 %>%
+  read_html() %>%
+  html_node("#adv_school_stats") %>%
+  html_table()
+
+head(data_html_2018)
+```
+Now that I have the raw data that I will be using in this report, the next step will be cleaning the data into usable data. In order to clean up this data, I will be using basic R functions and the dplyr package, which is part of the larger tidyverse package in R - https://dplyr.tidyverse.org/. The dplyr package provides me with additional functions that make the cleaning up task easier and faster.  
+
+There are a couple of problems with this scraped data that I notice.
+
+First, there are no column names for my dataframe. The header/column values seem to be occupying every 20 rows of the data frame. To fix this, I will assign the column names of my dataframe to the values from the first row with colnames(). 
+```{r}
+colnames(data_html_2018) <- as.character(unlist(data_html_2018[1,]))
+```
+The second problem is that column 17 is completely blank, this column was probably used for formatting the html table. There is no reason to keep this column, and it will probably cause problems later on, because of missing values. To remove this column, I just do a simple dataframe assignment. 
+```{r}
+data_html_2018 <- data_html_2018[,-17]
+```
+The third problem is kind of related to the first. The header/column values seem to be occupying every 20 rows of the data frame. To fix this, I just filter (from dplyr) the dataframe for rows that do not contain header values. I can choose any attribute to filter the dataframe on, so for this example I will use Rk. Because one of the header values is Rk, I filter the column Rk for observations that do not contain Rk. One of the header values is also a blank string for formatting purposes in the column Rk. Just like before, I filter the column Rk for this value. Lastly, I assign this cleaned up dataframe to a new dataframe called data_2018. 
+```{r}
+data_2018 <- data_html_2018 %>%
+  filter(Rk != "Rk") %>%
+  filter(Rk != "")
+```
+There are now 351 observations in the dataframe for the 351 college basketball teams that were listed on the html page. The next step will be to select only the columns that I want from the data, which is School Name, W-L% (win/loss percentage), FTr, TRB%, eFG%, and TOV%. Like the previous step, I use the dplyr package to do this, this time with the select function (The numbers correspond to column numbers in the dataframe). Also, remember that this dataset that we are currently working on is from 2017-2018 season only. To identify these rows as 2018, I will use the mutate function (dplyr) to create a new column called Year, and assign a value 2018 for every row. 
+```{r}
+data_2018 <- data_2018 %>%
+  select(2,6, 19, 22, 26, 27) %>%
+  mutate(Year = 2018)
+```
+I also notice that the columns for my statistics are character columns instead of numeric columns. I do a simple conversion using R's as.numeric function. 
+```{r}
+data_2018[,2] <- as.numeric(as.character(data_2018[,2]))
+data_2018[,3] <- as.numeric(as.character(data_2018[,3]))
+data_2018[,4] <- as.numeric(as.character(data_2018[,4]))
+data_2018[,5] <- as.numeric(as.character(data_2018[,5]))
+data_2018[,6] <- as.numeric(as.character(data_2018[,6]))
+head(data_2018)
+```
+Now my data for the 2017-2018 season is clean and ready for analysis. Again, remember that this data is only for the 2017-2018 season, I will need to repeat these steps two more times to generate data for the 2015-2016 and 2016-2017 seasons. Fortunately, sports-reference uses the same html format for their web pages, so repeating the steps is identical to what we did previously. 
+```{r}
+url2017 <- "https://www.sports-reference.com/cbb/seasons/2017-advanced-school-stats.html"
+
+data_html_2017 <- url2017 %>%
+  read_html() %>%
+  html_node("#adv_school_stats") %>%
+  html_table()
+
+colnames(data_html_2017) <- as.character(unlist(data_html_2017[1,]))
+data_html_2017 <- data_html_2017[,-17]
+data_2017 <- data_html_2017 %>%
+  filter(Rk != "Rk") %>%
+  filter(Rk != "") %>%
+  select(2,6, 19, 22, 26, 27) %>%
+  mutate(Year = 2017)
+
+data_2017[,2] <- as.numeric(as.character(data_2017[,2]))
+data_2017[,3] <- as.numeric(as.character(data_2017[,3]))
+data_2017[,4] <- as.numeric(as.character(data_2017[,4]))
+data_2017[,5] <- as.numeric(as.character(data_2017[,5]))
+data_2017[,6] <- as.numeric(as.character(data_2017[,6]))
+
+url2016 <- "https://www.sports-reference.com/cbb/seasons/2016-advanced-school-stats.html"
+
+data_html_2016 <- url2016 %>%
+  read_html() %>%
+  html_node("#adv_school_stats") %>%
+  html_table()
+
+colnames(data_html_2016) <- as.character(unlist(data_html_2016[1,]))
+data_html_2016 <- data_html_2016[,-17]
+data_2016 <- data_html_2016 %>%
+  filter(Rk != "Rk") %>%
+  filter(Rk != "") %>%
+  select(2,6, 19, 22, 26, 27) %>%
+  mutate(Year = 2016)
+
+data_2016[,2] <- as.numeric(as.character(data_2016[,2]))
+data_2016[,3] <- as.numeric(as.character(data_2016[,3]))
+data_2016[,4] <- as.numeric(as.character(data_2016[,4]))
+data_2016[,5] <- as.numeric(as.character(data_2016[,5]))
+data_2016[,6] <- as.numeric(as.character(data_2016[,6]))
+```
+Now that I have all three datasets cleaned up and in the same format, all I need to do is to merge the three vertically. I do this with R's rbind function. I change the name of columns to make referencing them easier. I also multiply eFG and WL by 100 to make them into percentages instead of fraction/decimal form. 
+```{r}
+data17_16 <- rbind(data_2016, data_2017)
+data_all <- rbind(data_2018, data17_16)
+colnames(data_all) <- c("name","wl", "ftr", "trb", "efg", "tov", "year")
+data_all <- data_all %>%
+  mutate(wl = wl * 100) %>%
+  mutate(efg = efg * 100)
+head(data_all)
+```
+We now have all the data from the 2016-2018 seasons combined and ready for analysis.
+
+## Exploratory Data Analysis 
+
+For my exploratory data analysis, I will be mainly using the ggplot2 package, also from tidyverse - http://ggplot2.tidyverse.org/. This package allows me to generate a variety of plots to illustrate distributions of attributes and relationships between attributes. Looking at distributions and relationships is my main concern, as I will be later generating models from this data. 
+
+The first part of this section is to illustrate the distribution of the four statistics I chose in the beginning (FTr, TRB%, eFG%, TOV%). I don't bother illustrating the distribution of W-L%, because it obviously will be unimodal and symmetrical across teams. To illustrate these distributions, I use three different types of plots (Histogram, Density Plot, Box Plot) from ggplot to showcase the variety of plots ggplot offers.
+
+To create a basic plot with ggplot, you specify the dataset you want to use and choose the variables you want to be mapped with aes(). After specifying the dataset and mapping, you then choose the type of plot you want to display. You can add labels with labs().  
+
+```{r}
+ggplot(data = data_all, aes(ftr)) +
+    geom_density() +
+    labs(title="Distribution of FTr (FreeThrow rate)",
+         x = "Ftr")
+
+ggplot(data = data_all, aes(trb)) +
+    geom_histogram(bins = 50) +
+    labs(title="Distribution of TBR% (Total Rebounding %)",
+         x = "TRB%")
+
+ggplot(data = data_all, aes(x = "", y = efg)) +
+    geom_boxplot() +
+    labs(title="Distribution of eFG% (Effective FG %)",
+         x = "eFG%")
+
+ggplot(data = data_all, aes(tov)) +
+    geom_density() +
+    labs(title="Distribution of TOV% (Turnover %)",
+         x = "TOV%")
+```
+
+The distributions of the statistics are unimodal and symmetrical. There isn't much skewness present, as shown in the symmetry of the plots. This is important, because it gives me some insight on what type of transformations (or lack of transformations) I will need to perform when creating a model.
+
+My next step is to illustrate the linear relationships the five attributes (W-L%, FTr, TRB%, eFG%, TOV%) have with one another. In order to do this I will create a scatter plot for each of these linear relationships. This will result in 10 (4 + 3 + 2 + 1) scatter plots. In order to show these linear relationships side by side, I will combine these plots in a single matrix. However, because ggplot removed their scatter plot matrix function, I will use another package - GGally (http://ggobi.github.io/ggally/#ggally), which is an extension of ggplot2. To create a scatter plot matrix, I call ggpairs(), and specify the dataset and columns I want to use. Like ggplot, you can also add your own labels.  
+
+```{r}
+ggpairs(data_all, columns = 2:6, columnLabels = c("W-L%", "FTr", "TRB%", "eFG%", "TOV%"), title = "Scatter Plot Matrix of W-L%, FTr, TRB%, eFG%, TOV%")
+```
+
+Looking at the scatter plots that consist of only FTr, TRB%, eFG%, and TOV%, there seems to be little multicollinearlity present. The scatter plots look random and there are no visible linear relationships present. Likewise, the correlation coefficents of these plots all have absolute value less than .3, some even close to .1. 
+
+Looking at the scatter plots consisting of W-L%, there are some visible linear relationships present, especially with TRB%, eFG%, and TOV%. The absolute value of these correlation coefficients suggest a linear relationship as well (.591, .625, and .46). This tells me that multiple linear regression may be useful in predicting W-L%. 
+
+## Model Generation
+
+Having seen the linear relationships that some of our 4 statistics (FTr, TRB%, eFG%, TOV%) have with W-L%, and the lack of multicollinearity within the 4 statistics, a multiple linear regression model with W-L% as the response variable seems like the most logical choice. 
+
+Creating a multiple linear regression model in R is very simple. Using the lm() function, I separate my response variable with my predictors with '~'. Using the broom package's augment() function (which is also from tidyverse: https://github.com/tidyverse/broom), I am able to generate residuals, fitted values, and other values related to prediction. 
+```{r}
+mlr_fit <- lm(wl~ftr+trb+efg+tov, data=data_all)
+mlr_aug <- mlr_fit %>%
+  augment()
+head(mlr_aug)
+```
+With these values, I am able to generate plots to assess the assumptions of multiple linear regression. I will create a residuals vs. fitted plot and a residuals vs. index plot (using ggplot's scatter plots).
+
+```{r}
+ggplot(data = mlr_aug, aes(x=.fitted,y=.resid)) +
+    geom_point() + 
+    geom_smooth() +
+    labs(x="Fitted", y="Residual", title = "Residuals vs. Fitted")
+```
+
+The spread of the residuals seem to be independent of fitted values, so the constant variance assumption of residuals is not violated. Also, there is no visible non-linear relationship from this plot, so linearity is not violated as well. 
+```{r}
+ggplot(data = mlr_aug, aes(x=as.numeric(row.names(mlr_aug)),y=.resid)) +
+    geom_point() + 
+    geom_smooth() + 
+    labs(x="Index", y="Residual", title = "Residuals vs. Index")
+```
+
+Looking at this second plot, the residuals seem to be independent and identically distributed. There are no visible patterns, so the independence of residuals is not violated. 
+
+```{r}
+ggplot(data = mlr_aug, aes(x = .resid)) +
+    geom_histogram() + 
+    labs(x="Residuals", title = "Distribution of Residuals")
+```
+
+Another assumption of multiple linear regression is normality of residuals. Looking at a histogram of residuals, one can definitely say that the residuals look to resemble the normal distribution. Therefore, the normality assumption is not violated. 
+
+The last assumption of multiple linear regression is the lack of multicollinearity. However, we already looked at this assumption when we created the scatter plot matrix of all the predictors. We came to a conclusion that the predictors were not correlated with one another.
+
+By creating and analyzing the Residuals vs. Fitted plot, Residuals vs. Index plot, and Histogram of Residuals, We can conclude that the assumptions for multiple linear regression are not violated when creating this model.
+
+## Hypothesis Testing 
+Using the broom package's tidy() function, I am able to output all the relevant stats that pertain to my model's predictors. 
+```{r}
+mlr_fit_stats <- mlr_fit %>%
+  tidy()
+mlr_fit_stats
+```
+All of the predictors' p-values are less than 1.544e-16 (They are all significant at an alpha = 1.55e-16 level). For all of the predictors, we would reject the null hypothesis of no relationship with W-L%. 
+
+These statistics for each predictor reveal how each predictor individually performs in the model. To get a better view of the entire model, I will use the glance() function, also from the broom package. 
+```{r}
+mlr_fit_sum <- mlr_fit %>%
+  glance() %>%
+  select(r.squared, adj.r.squared, sigma, statistic, p.value, df, AIC)
+mlr_fit_sum
+```
+The adjusted R-squared for this model is pretty good at .688, indicating that around 69% of the variation in W-L% can be explained by this regression model. Performing an F-test with df = 5 and F = 581.189, allows us to reject the null hypothesis (p-value = 3.665e-264) that there is no relationship between the response and the predictors. 
+
+An adjusted R-squared of .688 is pretty good already. However, I will see if I will be able to generate a better model. Looking at the p-values of my predictors, I decide to remove the predictor with the largest p-value, which is FTr at 1.544e-16, and create a new model with 3 predictors. Now I go through the same process as before to assess my new model. 
+```{r}
+mlr_reduce_fit <- lm(wl~trb+efg+tov, data=data_all)
+mlr_reduce_fit_stats <- mlr_reduce_fit %>%
+  tidy()
+mlr_reduce_fit_stats
+```
+Like the previous model, all the predictors' p-values are very small (they are all significant at an alpha = 4.700e-57 level). For all of the predictors, we would reject the null hypothesis of no relationship with W-L%.  
+```{r}
+mlr_reduce_fit_sum <- mlr_reduce_fit %>%
+  glance() %>%
+  select(r.squared, adj.r.squared, sigma, statistic, p.value, df, AIC)
+mlr_reduce_fit_sum
+```
+However, looking at the glance() output, the model's performance seems to have decreased on almost all levels. The adjusted R-squared decreased from .688 to .667. Standard Error (sigma) seems to have increased as well, from 9.568 to 9.879. AIC also increased from 7751.469 to 7817.939. 
+
+To support these findings, I will perform a partial F-test, which tests whether the full model is significantly better than the reduced model. In this case, our full model will be the first model we created, and the reduced model will be the model with FTr removed (for more information: https://www.unc.edu/courses/2007spring/biol/145/001/docs/lectures/Nov19.html). I will use the R function anova() to perform this test. 
+```{r}
+anova(mlr_reduce_fit, mlr_fit)
+```
+With an F-statistic of 70.41, we can reject the null hypothesis that the reduced model is a better fit than our full model at any reasonable significance level(p-value = 2.2e-16). So, instead we will use the full model for further analysis.
+
+## Model Analysis & Interpretation 
+
+```{r}
+mlr_fit_stats
+```
+Let's see how accurately this model predicts Maryland's 2018 basketball season. 
+W-L% = -172.49856 + 55.127347(.380) + 2.611055(53.6) + 2.509976(54.6) - 3.405990(17.9)
+Predicted W-L% = 64.47985, Actual = 59.4. For Maryland's 2018 basketball season the model is about 5 percentage points off. 
+
+The next step is figuring out what the coefficient values actually mean. Here are a couple of statements that can be made from this information: 
+
+Holding all other variables constant, a 1 percent increase in eFG% will increase W-L% by 2.51.
+
+Holding all other variables constant, a .01 unit increase in FTr will increase W-L% by .551
+(55.127347/ 100). I chose to divide by 100, because in reality, a 1 unit increase in a ratio will most likely never happen. 
+
+Holding all other variables constant, a 1 percent increase in TRB% will increase W-L% by 2.611.
+
+Holding all other variables constant, a 1 percent increase in TOV% will decrease W-L% by 3.406.
+
+#### Final Thoughts
+
+The final model turned out pretty good. The adjusted R-squared is .688, and all of the predictors are significant from performing t-tests. The model itself is significant as well from the results of the F-test. 
+
+Looking at these values of the coefficients, the variable that holds the most weight in deciding W-L% seems to be TOV%, followed by TRB%, eFG%, and FTr. A College Basketball team can use this information and this model to recognize areas that their team should focus on. According to this model, coaches should focus first on reducing turnovers, improving rebounding, shooting, and then getting to the free throw line. 
